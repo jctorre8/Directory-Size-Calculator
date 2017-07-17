@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
+//#include <strings.h>
 #include <dirent.h>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,54 +16,143 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 //DATA STRUCTURES
-typedef struct file {
+typedef struct File {
 	char name[MAX_FILENAME_LENGTH];
-	int size;
 	struct stat fileStat;
-} file;
+} File;
+
+File *files[MAX_ELEMENTS];
 
 ////////////////////////////////////////////////////////////////////////////////
 //GLOBAL VARIABLES
 
+char slash[] = "/";
+
 ////////////////////////////////////////////////////////////////////////////////
 //FORWARD DECLARATIONS
-void merge(int arr[], int l, int m, int r);
-void mergeSort(int arr[], int l, int r);
-
+void merge(File * arr[], int l, int m, int r);
+void mergeSort(File * arr[], int l, int r);
+int listDirectory(char *path, int *index);
+void cleanUp(int index);
+void printSpace(long space);
+void printFiles(int index);
 
 //main entry point. Starts the program by displaying a welcome and beginning an 
 //input loop that displays a menu and processes user input. Pressing q quits.      
 int main() {
-	DIR *dir;
-    struct dirent *dp;
-    char * file_name;
-    dir = opendir(".");
-    while ((dp=readdir(dir)) != NULL) {
-        //printf("debug: %s\n", dp->d_name);
-        if ( !strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..") )
-        {
-            // do nothing (straight logic)
-        } else {
-            file_name = dp->d_name; // use it
-            printf("file_name: \"%s\"\n",file_name);
-        }
-    }
-    closedir(dir);
+    char initialPath[MAX_PATH_LENGTH] = ".";
+    int index = 0;
+    int totalSize = 0;
+
+    //size calculation
+    totalSize = listDirectory(initialPath, &index);
+
+    //Array so it is in order
+    mergeSort(files,0,index-1);
+
+    //print files in nice table
+    printFiles(index);
+    printSpace(totalSize);
+    printf("\t\t.\n");
+
+    //Clean everything up
+	cleanUp(index);
     return 0;
 }
 
+//Recursive function that does through directories looking
+//for the files to be added to the size calculation
+int listDirectory(char *path, int *index){
+    DIR *dir;
+    struct dirent *dp;
+    dir = opendir(path);
+
+    //return 0 if it fails to open a directory
+    if(dir == NULL){
+        printf("Failed to open directory: %s\n",path);
+        return 0;
+    }
+
+    int runningTotal = 0;
+
+    while ((dp=readdir(dir)) != NULL) {
+        //check for current directory and previous directory
+        if(!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")){
+            continue;
+        }
+
+        //Alllocate new file in array and get info
+        files[*index] = (File *) malloc(sizeof(File));        
+        char newPath[MAX_PATH_LENGTH] = "";
+        strcat(newPath, path);
+        strcat(newPath, slash);
+        strcat(newPath, dp->d_name);
+        strcpy(files[*index]->name, newPath);
+        stat(files[*index]->name, &files[*index]->fileStat);
+
+        if (dp->d_type == DT_DIR){
+            *index += 1;
+            runningTotal += listDirectory(newPath, index);
+        } else  {
+            runningTotal += files[*index]->fileStat.st_size;
+            *index += 1;
+        }
+        
+    }
+    closedir(dir);
+
+    return runningTotal;
+}
+
+//Function to free the arrays.
+void cleanUp(int index){
+    int i;
+
+    for(i = 0; i < index; i++){
+        //printf("Current Cleanup Index: %d\n", i);
+        free(files[i]);
+    }
+
+}
+
+//Helper function to determine the magnitude of the space
+// that the file is taking at the moment.
+void printSpace(long space){
+    if(space < 1024){
+        printf("%ldB", space);
+    }
+    else if (space >= 1024 && space < 1048576){
+        printf("%.1fK", space/1024.0);
+    }
+    else{
+        printf("%.1fMB", space/1048576.0);   
+    }
+
+}
+
+//Helper function to print files and not directories
+void printFiles(int index){
+    int i;
+    for (i = 0; i < index; ++i){
+        if(S_ISDIR(files[i]->fileStat.st_mode)){
+            continue;
+        }
+        printSpace(files[i]->fileStat.st_size);
+        printf("\t\t%s\n", files[i]->name);
+    }
+}
 
 
 // Merges two subarrays of arr[].
 // First subarray is arr[l..m]
 // Second subarray is arr[m+1..r]
-void merge(int arr[], int l, int m, int r){
+void merge(File * arr[], int l, int m, int r){
     int i, j, k;
     int n1 = m - l + 1;
     int n2 =  r - m;
  
     /* create temp arrays */
-    int L[n1], R[n2];
+    File * L[n1], * R[n2];
  
     /* Copy data to temp arrays L[] and R[] */
     for (i = 0; i < n1; i++)
@@ -77,7 +166,7 @@ void merge(int arr[], int l, int m, int r){
     k = l; // Initial index of merged subarray
     while (i < n1 && j < n2)
     {
-        if (L[i] <= R[j])
+        if (strcmp(L[i]->name,R[j]->name) <= 0)
         {
             arr[k] = L[i];
             i++;
@@ -111,7 +200,7 @@ void merge(int arr[], int l, int m, int r){
  
 /* l is for left index and r is right index of the
    sub-array of arr to be sorted */
-void mergeSort(int arr[], int l, int r){
+void mergeSort(File * arr[], int l, int r){
     if (l < r)
     {
         // Same as (l+r)/2, but avoids overflow for
